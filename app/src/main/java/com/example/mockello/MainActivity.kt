@@ -15,18 +15,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,16 +48,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.example.mockello.ui.theme.MockelloTheme
 import com.example.mockello.ui.theme.MockelloOrange
 import com.example.mockello.ui.theme.MockelloOrangeLight
 import com.example.mockello.ui.theme.MockelloDark
+
+// Navigation screens
+enum class Screen {
+    HOME, CLIENT_PORTAL, EMPLOYER_PORTAL, PARTNER_PORTAL, CLIENT_LOGIN, CLIENT_DASHBOARD
+}
+
+// Data classes for client portal
+data class Project(
+    val id: String,
+    val title: String,
+    val description: String,
+    val status: ProjectStatus,
+    val progress: Float,
+    val startDate: String,
+    val endDate: String?,
+    val technologies: List<String>
+)
+
+enum class ProjectStatus {
+    UPCOMING, ONGOING, COMPLETED
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,14 +91,124 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MockelloTheme {
-                LandingPage()
+                MockelloApp()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MockelloApp() {
+    var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    var isLoggedIn by remember { mutableStateOf(false) }
+    var currentUser by remember { mutableStateOf("") }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            HamburgerMenu(
+                onNavigateToPortal = { screen ->
+                    currentScreen = screen
+                    scope.launch { drawerState.close() }
+                },
+                onNavigateHome = {
+                    currentScreen = Screen.HOME
+                    isLoggedIn = false
+                    currentUser = ""
+                    scope.launch { drawerState.close() }
+                }
+            )
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                if (currentScreen != Screen.HOME) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = when (currentScreen) {
+                                    Screen.CLIENT_PORTAL -> "Client Portal"
+                                    Screen.CLIENT_LOGIN -> "Client Login"
+                                    Screen.CLIENT_DASHBOARD -> "Dashboard - $currentUser"
+                                    Screen.EMPLOYER_PORTAL -> "Employer Portal"
+                                    Screen.PARTNER_PORTAL -> "Partner Portal"
+                                    else -> "Mockello"
+                                },
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(
+                                onClick = {
+                                    if (currentScreen == Screen.CLIENT_DASHBOARD || 
+                                        currentScreen == Screen.CLIENT_LOGIN) {
+                                        currentScreen = if (isLoggedIn) Screen.CLIENT_DASHBOARD else Screen.CLIENT_PORTAL
+                                    } else {
+                                        currentScreen = Screen.HOME
+                                        isLoggedIn = false
+                                        currentUser = ""
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color.White
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MockelloOrange
+                        )
+                    )
+                }
+            }
+        ) { paddingValues ->
+            when (currentScreen) {
+                Screen.HOME -> LandingPage(
+                    onMenuClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.padding(paddingValues)
+                )
+                Screen.CLIENT_PORTAL -> ClientPortalScreen(
+                    onNavigateToLogin = { currentScreen = Screen.CLIENT_LOGIN },
+                    modifier = Modifier.padding(paddingValues)
+                )
+                Screen.CLIENT_LOGIN -> ClientLoginScreen(
+                    onLoginSuccess = { username ->
+                        currentUser = username
+                        isLoggedIn = true
+                        currentScreen = Screen.CLIENT_DASHBOARD
+                    },
+                    modifier = Modifier.padding(paddingValues)
+                )
+                Screen.CLIENT_DASHBOARD -> ClientDashboardScreen(
+                    username = currentUser,
+                    modifier = Modifier.padding(paddingValues)
+                )
+                Screen.EMPLOYER_PORTAL -> ComingSoonScreen(
+                    title = "Employer Portal",
+                    modifier = Modifier.padding(paddingValues)
+                )
+                Screen.PARTNER_PORTAL -> ComingSoonScreen(
+                    title = "Partner Portal", 
+                    modifier = Modifier.padding(paddingValues)
+                )
             }
         }
     }
 }
 
 @Composable
-fun LandingPage() {
+fun LandingPage(
+    onMenuClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val scrollState = rememberScrollState()
     
     // Floating elements animation
@@ -101,6 +243,7 @@ fun LandingPage() {
         
         // Floating action elements
         FloatingElements(
+            onMenuClick = onMenuClick,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .offset(x = floatingOffset.dp, y = floatingOffset.dp)
@@ -528,7 +671,10 @@ fun AnimatedButton(
 }
 
 @Composable
-fun FloatingElements(modifier: Modifier = Modifier) {
+fun FloatingElements(
+    onMenuClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     var extended by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(
         targetValue = if (extended) 180f else 0f,
@@ -557,6 +703,15 @@ fun FloatingElements(modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.End
             ) {
+                FloatingActionButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier.size(48.dp),
+                    containerColor = Color.White,
+                    contentColor = MockelloOrange
+                ) {
+                    Icon(Icons.Default.Menu, contentDescription = "Menu")
+                }
+                
                 FloatingActionButton(
                     onClick = { /* Share action */ },
                     modifier = Modifier.size(48.dp),
@@ -1435,6 +1590,782 @@ fun CTASection() {
                 }
             }
         }
+    }
+}
+
+// Hamburger Menu Component
+@Composable
+fun HamburgerMenu(
+    onNavigateToPortal: (Screen) -> Unit,
+    onNavigateHome: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(300.dp)
+            .background(Color.White)
+            .padding(16.dp)
+    ) {
+        // Header
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(MockelloOrange, MockelloOrangeLight)
+                    )
+                )
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Mockello",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color.White
+                )
+                Text(
+                    text = "AI + Full-Stack",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Portal Options
+        PortalMenuItem(
+            title = "Client Portal",
+            description = "Track your projects and progress",
+            icon = Icons.Default.Person,
+            onClick = { onNavigateToPortal(Screen.CLIENT_PORTAL) }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        PortalMenuItem(
+            title = "Employer Portal",
+            description = "Manage hiring and teams",
+            icon = Icons.Default.Build,
+            onClick = { onNavigateToPortal(Screen.EMPLOYER_PORTAL) }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        PortalMenuItem(
+            title = "Partner Portal",
+            description = "Partnership management",
+            icon = Icons.Default.Star,
+            onClick = { onNavigateToPortal(Screen.PARTNER_PORTAL) }
+        )
+        
+        Spacer(modifier = Modifier.weight(1f))
+        
+        // Home Button
+        OutlinedButton(
+            onClick = onNavigateHome,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MockelloOrange
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Back to Home")
+        }
+    }
+}
+
+@Composable
+fun PortalMenuItem(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        MockelloOrange.copy(alpha = 0.1f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MockelloOrange,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MockelloDark
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MockelloDark.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+// Client Portal Screen
+@Composable
+fun ClientPortalScreen(
+    onNavigateToLogin: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Header
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(MockelloOrange, MockelloOrangeLight)
+                    ),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(60.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Text(
+            text = "Client Portal",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.ExtraBold
+            ),
+            color = MockelloDark,
+            textAlign = TextAlign.Center
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "Access your project dashboard, track progress, and view project details",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MockelloDark.copy(alpha = 0.8f),
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
+        )
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        Button(
+            onClick = onNavigateToLogin,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MockelloOrange
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Login to Portal",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+}
+
+// Client Login Screen
+@Composable
+fun ClientLoginScreen(
+    onLoginSuccess: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(60.dp))
+        
+        // Logo
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(MockelloOrange, MockelloOrangeLight)
+                    ),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(50.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Text(
+            text = "Client Login",
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = MockelloDark
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = "Access your project dashboard",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MockelloDark.copy(alpha = 0.7f)
+        )
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        // Username Field
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Password Field
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.CheckCircle else Icons.Default.Check,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                    )
+                }
+            }
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Login Button
+        Button(
+            onClick = {
+                if (username.isNotBlank() && password.isNotBlank()) {
+                    isLoading = true
+                    // Simulate login
+                    onLoginSuccess(username)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            enabled = username.isNotBlank() && password.isNotBlank() && !isLoading,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MockelloOrange
+            )
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = Color.White
+                )
+            } else {
+                Text(
+                    text = "Login",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Demo credentials info
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MockelloOrange.copy(alpha = 0.1f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Demo Credentials",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MockelloOrange
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Username: demo\nPassword: demo123",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MockelloDark.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+// Client Dashboard Screen
+@Composable
+fun ClientDashboardScreen(
+    username: String,
+    modifier: Modifier = Modifier
+) {
+    val projects = remember {
+        listOf(
+            Project("1", "E-commerce Platform", "Modern React-based shopping platform with AI recommendations", ProjectStatus.COMPLETED, 1.0f, "2024-01-15", "2024-03-20", listOf("React", "Node.js", "MongoDB", "AI/ML")),
+            Project("2", "Mobile Banking App", "Secure banking application with biometric authentication", ProjectStatus.ONGOING, 0.75f, "2024-02-01", null, listOf("React Native", "PostgreSQL", "Security")),
+            Project("3", "AI Chatbot Platform", "Intelligent customer service chatbot with NLP capabilities", ProjectStatus.ONGOING, 0.45f, "2024-03-10", null, listOf("Python", "TensorFlow", "NLP", "Docker")),
+            Project("4", "Smart Dashboard", "Real-time analytics dashboard for business intelligence", ProjectStatus.UPCOMING, 0.0f, "2024-04-15", null, listOf("Vue.js", "D3.js", "WebSocket", "Analytics"))
+        )
+    }
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp)
+    ) {
+        // Welcome Section
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(MockelloOrange, MockelloOrangeLight)
+                        )
+                    )
+                    .padding(24.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "Welcome back, $username!",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Track your projects and view progress updates",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Project Stats
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(horizontal = 0.dp)
+        ) {
+            item {
+                ProjectStatsCard(
+                    title = "Completed",
+                    count = projects.count { it.status == ProjectStatus.COMPLETED },
+                    color = Color(0xFF4CAF50)
+                )
+            }
+            item {
+                ProjectStatsCard(
+                    title = "Ongoing",
+                    count = projects.count { it.status == ProjectStatus.ONGOING },
+                    color = MockelloOrange
+                )
+            }
+            item {
+                ProjectStatsCard(
+                    title = "Upcoming",
+                    count = projects.count { it.status == ProjectStatus.UPCOMING },
+                    color = Color(0xFF2196F3)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Projects List
+        Text(
+            text = "Your Projects",
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = MockelloDark
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        projects.forEach { project ->
+            ProjectCard(project = project)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun ProjectStatsCard(
+    title: String,
+    count: Int,
+    color: Color
+) {
+    Card(
+        modifier = Modifier.width(120.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.ExtraBold
+                ),
+                color = color
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MockelloDark.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun ProjectCard(project: Project) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = project.title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MockelloDark,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                ProjectStatusBadge(status = project.status)
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = project.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MockelloDark.copy(alpha = 0.8f),
+                lineHeight = 20.sp
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Progress Bar
+            if (project.status == ProjectStatus.ONGOING || project.status == ProjectStatus.COMPLETED) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Progress",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MockelloDark.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "${(project.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MockelloOrange
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = project.progress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MockelloOrange,
+                        trackColor = MockelloOrange.copy(alpha = 0.2f)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            
+            // Technologies
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(project.technologies) { tech ->
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                MockelloOrange.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = tech,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MockelloOrange,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Dates
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Start Date",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MockelloDark.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = project.startDate,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = MockelloDark
+                    )
+                }
+                
+                if (project.endDate != null) {
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = "End Date",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MockelloDark.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = project.endDate,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MockelloDark
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProjectStatusBadge(status: ProjectStatus) {
+    val (color, text) = when (status) {
+        ProjectStatus.COMPLETED -> Color(0xFF4CAF50) to "Completed"
+        ProjectStatus.ONGOING -> MockelloOrange to "Ongoing"
+        ProjectStatus.UPCOMING -> Color(0xFF2196F3) to "Upcoming"
+    }
+    
+    Box(
+        modifier = Modifier
+            .background(
+                color.copy(alpha = 0.1f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = color
+        )
+    }
+}
+
+// Coming Soon Screen
+@Composable
+fun ComingSoonScreen(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(MockelloOrange.copy(alpha = 0.2f), MockelloOrange.copy(alpha = 0.1f))
+                    ),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Build,
+                contentDescription = null,
+                tint = MockelloOrange,
+                modifier = Modifier.size(60.dp)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.ExtraBold
+            ),
+            color = MockelloDark,
+            textAlign = TextAlign.Center
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "Coming Soon",
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = MockelloOrange,
+            textAlign = TextAlign.Center
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "We're working hard to bring you this portal. Stay tuned for updates!",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MockelloDark.copy(alpha = 0.8f),
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
+        )
     }
 }
 
